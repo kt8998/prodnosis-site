@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prodnosis — AI + IoT Health Monitoring (Prototype)</title>
+<style>
+  :root{
+    --navy:#0a1440; --navy2:#0f1d5c; --blue:#2f5bff; --blue-light:#6f8dff;
+    --bg:#0b1330; --panel:#121b45; --panel2:#17204f; --line:#26305f;
+    --text:#eef1ff; --sub:#9aa4d6; --red:#ff4d5e; --orange:#ff9f43; --green:#33d17a; --yellow:#ffd23f;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:linear-gradient(180deg,#070c24,#0b1330 40%);color:var(--text);}
+  header{display:flex;align-items:center;justify-content:space-between;padding:16px 28px;background:var(--navy);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:50;}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.5px;font-size:20px;}
+  .brand .mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--blue),var(--blue-light));display:flex;align-items:center;justify-content:center;font-size:16px;}
+  nav.tabs{display:flex;gap:6px;background:var(--panel);padding:4px;border-radius:12px;border:1px solid var(--line);}
+  nav.tabs button{background:transparent;border:none;color:var(--sub);padding:9px 18px;border-radius:9px;cursor:pointer;font-weight:600;font-size:14px;}
+  nav.tabs button.active{background:var(--blue);color:#fff;}
+  .disclaimer{font-size:11px;color:var(--sub);max-width:220px;text-align:right;line-height:1.4;}
+  main{max-width:1300px;margin:0 auto;padding:24px 20px 80px;}
+  .grid{display:grid;gap:18px;}
+  .cols-3{grid-template-columns:repeat(3,1fr);}
+  .cols-4{grid-template-columns:repeat(4,1fr);}
+  .cols-2{grid-template-columns:1.1fr .9fr;}
+  @media(max-width:980px){.cols-3,.cols-4,.cols-2{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px 20px;}
+  .card h3{margin:0 0 12px;font-size:14px;color:var(--sub);font-weight:700;letter-spacing:.4px;text-transform:uppercase;}
+  .row{display:flex;align-items:center;justify-content:space-between;}
+  .score-ring{width:120px;height:120px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-direction:column;background:conic-gradient(var(--green) calc(var(--pct)*1%), var(--line) 0);position:relative;}
+  .score-ring::before{content:"";position:absolute;inset:10px;border-radius:50%;background:var(--panel);}
+  .score-ring .val{position:relative;font-size:30px;font-weight:800;}
+  .score-ring .lbl{position:relative;font-size:10px;color:var(--sub);}
+  .vital{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;}
+  .vital .k{font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:.4px;}
+  .vital .v{font-size:22px;font-weight:800;margin-top:4px;}
+  .vital .u{font-size:11px;color:var(--sub);font-weight:500;margin-left:3px;}
+  .risk{margin-bottom:12px;}
+  .risk .top{display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;}
+  .risk .bar{height:8px;border-radius:6px;background:var(--line);overflow:hidden;}
+  .risk .bar > div{height:100%;border-radius:6px;}
+  .pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;}
+  .pill.high{background:rgba(255,77,94,.15);color:var(--red);}
+  .pill.med{background:rgba(255,159,67,.15);color:var(--orange);}
+  .pill.low{background:rgba(51,209,122,.15);color:var(--green);}
+  .btn{background:var(--blue);color:#fff;border:none;padding:10px 16px;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;}
+  .btn.secondary{background:var(--panel2);border:1px solid var(--line);color:var(--text);}
+  .btn.danger{background:var(--red);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .chatlog{height:220px;overflow-y:auto;background:var(--panel2);border-radius:12px;border:1px solid var(--line);padding:12px;font-size:13px;display:flex;flex-direction:column;gap:8px;}
+  .msg{max-width:85%;padding:8px 12px;border-radius:10px;line-height:1.45;white-space:pre-wrap;}
+  .msg.bot{background:var(--panel);align-self:flex-start;border:1px solid var(--line);}
+  .msg.user{background:var(--blue);align-self:flex-end;color:#fff;}
+  .chatinput{display:flex;gap:8px;margin-top:10px;}
+  .chatinput input{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--text);font-size:13px;}
+  select, input[type=text]{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px;}
+  .alertbar{display:none;background:linear-gradient(90deg,#3a0d16,#1a0508);border:1px solid var(--red);color:#ffd3d8;padding:12px 18px;border-radius:12px;margin-bottom:18px;align-items:center;justify-content:space-between;gap:10px;}
+  .alertbar.show{display:flex;}
+  .patient-list{display:flex;flex-direction:column;gap:10px;}
+  .patient-card{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;transition:.15s;}
+  .patient-card:hover{border-color:var(--blue-light);}
+  .patient-card.selected{border-color:var(--blue);background:#16225e;}
+  .tag{display:inline-block;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-size:11px;margin:2px 4px 0 0;color:var(--sub);}
+  .subtle{color:var(--sub);font-size:12px;}
+  .suggest-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;}
+  .suggest-list li{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:13px;display:flex;gap:8px;align-items:center;}
+  footer.note{max-width:1300px;margin:0 auto;padding:0 20px 40px;color:var(--sub);font-size:12px;text-align:center;}
+  .flex-gap{display:flex;gap:10px;flex-wrap:wrap;}
+  h2.section{font-size:18px;margin:26px 0 14px;color:var(--text);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><div class="mark">❤</div> PRODNOSIS <span style="color:var(--sub);font-weight:500;font-size:13px;margin-left:6px;">by Team Invense</span></div>
+  <nav class="tabs">
+    <button id="tabPatientBtn" class="active" onclick="switchTab('patient')">Patient Dashboard</button>
+    <button id="tabDoctorBtn" onclick="switchTab('doctor')">Doctor Portal</button>
+  </nav>
+  <div class="disclaimer">Working prototype with simulated wearable data &amp; rule-based risk scoring — not a medical device.</div>
+</header>
+
+<main>
+
+<div id="globalAlert" class="alertbar">
+  <span id="globalAlertText">⚠ Alert</span>
+  <button class="btn secondary" onclick="dismissAlert()">Dismiss</button>
+</div>
+
+<!-- ================= PATIENT VIEW ================= -->
+<section id="patientView">
+
+  <div class="row" style="margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+    <div>
+      <div class="subtle">Viewing as</div>
+      <select id="patientSelect" onchange="onPatientChange()"></select>
+    </div>
+    <div class="flex-gap">
+      <button class="btn secondary" onclick="simulateAnomaly()">⚡ Simulate Health Anomaly</button>
+      <button class="btn" onclick="downloadReport()">⬇ Download Report</button>
+    </div>
+  </div>
+
+  <div class="grid cols-3">
+    <div class="card">
+      <h3>Health Score</h3>
+      <div class="row">
+        <div class="score-ring" id="scoreRing" style="--pct:92;">
+          <div class="val" id="scoreVal">92</div>
+          <div class="lbl">/ 100</div>
+        </div>
+        <div style="flex:1;margin-left:16px;">
+          <div id="scoreStatus" style="font-weight:700;color:var(--green);">Health is maintained</div>
+          <div class="subtle" id="scoreSub">Keep it up — you're doing well.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="grid-column:span 2;">
+      <h3>Live Vitals <span class="subtle" style="text-transform:none;font-weight:400;">(simulated IoT feed, updates every 3s)</span></h3>
+      <div class="grid cols-4" id="vitalsGrid"></div>
+    </div>
+  </div>
+
+  <div class="grid cols-2" style="margin-top:18px;">
+    <div class="card">
+      <h3>🧠 AI Potential Risk Assessment</h3>
+      <div id="riskList"></div>
+      <div class="subtle" style="margin-top:8px;">Rule-based scoring engine demonstrating how live vitals + history would feed a trained ML model in production.</div>
+    </div>
+
+    <div class="card">
+      <h3>💊 Personalized Suggestions</h3>
+      <div class="subtle" style="margin-bottom:8px;">Generated from top current risk factors</div>
+      <div style="margin-bottom:10px;font-weight:700;font-size:13px;">Diet</div>
+      <ul class="suggest-list" id="dietList"></ul>
+      <div style="margin:14px 0 10px;font-weight:700;font-size:13px;">Exercise</div>
+      <ul class="suggest-list" id="exerciseList"></ul>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px;">
+    <h3>🤖 Ask Prodnosis AI</h3>
+    <div class="chatlog" id="chatLog"></div>
+    <div class="chatinput">
+      <input type="text" id="chatInput" placeholder="Ask anything, e.g. 'Give me a monthly report of my health'" onkeydown="if(event.key==='Enter')sendChat()">
+      <button class="btn" onclick="sendChat()">Send</button>
+    </div>
+  </div>
+
+</section>
+
+<!-- ================= DOCTOR VIEW ================= -->
+<section id="doctorView" style="display:none;">
+  <div class="grid cols-2">
+    <div class="card">
+      <h3>Active Patients</h3>
+      <div class="patient-list" id="doctorPatientList"></div>
+    </div>
+
+    <div class="card">
+      <h3>Patient Detail &amp; AI Flags</h3>
+      <div id="doctorDetail"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px;">
+    <h3>🔔 AI-Flagged High-Risk Patients (Panel-Wide)</h3>
+    <div id="hospitalAlerts" class="subtle">No high-risk flags right now.</div>
+  </div>
+</section>
+
+</main>
+
+<footer class="note">Prodnosis prototype · demonstrates the RPM + AI risk-prediction concept from the Technex'25 pitch deck. All patient data below is fictional demo data.</footer>
+
+<script>
+/* ===================== DATA MODEL ===================== */
+const patients = {
+  manya: {
+    id:"manya", name:"Manya Gupta", sex:"Female", age:18, weight:58, height:"5'4\"",
+    history:["Asthma","Frequent Migraines"],
+    symptoms:["Sleeplessness","Anxiety","Fatigue","Headache"],
+    baseline:{steps:15864, calories:721, hr:74, spo2:96, sleep:5.2, bpSys:118, bpDia:76, glucose:98}
+  },
+  tanmay: {
+    id:"tanmay", name:"Tanmay Meena", sex:"Male", age:35, weight:60, height:"6'1\"",
+    history:["Type 2 diabetes","Kidney stones removal"],
+    symptoms:["High blood pressure","High fever","Nausea","Headache"],
+    baseline:{steps:6200, calories:410, hr:88, spo2:94, sleep:5.8, bpSys:138, bpDia:90, glucose:162}
+  },
+  ramlal: {
+    id:"ramlal", name:"Ram Lal (Farmer persona)", sex:"Male", age:60, weight:70, height:"5'7\"",
+    history:["Type 2 diabetes"],
+    symptoms:["Low activity","Occasional dizziness"],
+    baseline:{steps:3100, calories:280, hr:80, spo2:95, sleep:6.1, bpSys:132, bpDia:86, glucose:178}
+  }
+};
+
+let live = {}; // per-patient current vitals
+Object.keys(patients).forEach(id=>{ live[id] = {...patients[id].baseline}; });
+
+let currentPatientId = "manya";
+let chatHistory = {};
+Object.keys(patients).forEach(id=> chatHistory[id]=[]);
+let selectedDoctorPatientId = "manya";
+let anomalyPatientId = null;
+
+/* ===================== TABS ===================== */
+function switchTab(tab){
+  document.getElementById('patientView').style.display = tab==='patient' ? 'block':'none';
+  document.getElementById('doctorView').style.display = tab==='doctor' ? 'block':'none';
+  document.getElementById('tabPatientBtn').classList.toggle('active', tab==='patient');
+  document.getElementById('tabDoctorBtn').classList.toggle('active', tab==='doctor');
+  if(tab==='doctor'){ renderDoctorView(); }
+}
+
+/* ===================== PATIENT SELECT ===================== */
+function populatePatientSelect(){
+  const sel = document.getElementById('patientSelect');
+  sel.innerHTML = Object.values(patients).map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  sel.value = currentPatientId;
+}
+function onPatientChange(){
+  currentPatientId = document.getElementById('patientSelect').value;
+  renderPatientView();
+}
+
+/* ===================== RISK ENGINE ===================== */
+// Simple, transparent rule-based scoring standing in for a trained ML model.
+function computeRisks(v){
+  const risks = [];
+
+  // Insomnia — low sleep hours
+  let insomnia = clamp(round((7 - v.sleep) * 14), 3, 96);
+  risks.push({name:"Insomnia", pct:insomnia, tier:tier(insomnia), desc:"Insufficient / irregular sleep duration detected from wearable sleep tracking."});
+
+  // Type 2 Diabetes — glucose trend
+  let diabetes = clamp(round((v.glucose - 90) * 0.55), 3, 96);
+  risks.push({name:"Type 2 Diabetes", pct:diabetes, tier:tier(diabetes), desc:"Elevated glucose readings relative to healthy fasting range (70–99 mg/dL)."});
+
+  // Hypertension — blood pressure
+  let hyper = clamp(round(((v.bpSys - 110) + (v.bpDia - 70)) * 0.9), 2, 96);
+  risks.push({name:"Hypertension", pct:hyper, tier:tier(hyper), desc:"Systolic/diastolic BP trending above normal (120/80 mmHg) threshold."});
+
+  // Respiratory distress — SpO2
+  let resp = clamp(round((97 - v.spo2) * 12), 2, 95);
+  risks.push({name:"Respiratory Distress", pct:resp, tier:tier(resp), desc:"Blood oxygen saturation below the healthy 97%+ baseline."});
+
+  // Fatigue — low steps + low sleep
+  let fatigue = clamp(round((8000 - v.steps)/120 + (7-v.sleep)*4), 2, 92);
+  risks.push({name:"Fatigue", pct:fatigue, tier:tier(fatigue), desc:"Low activity combined with reduced sleep duration."});
+
+  // Cardiac irregularity — resting HR
+  let cardiac = clamp(round((v.hr - 68) * 2.2), 2, 95);
+  risks.push({name:"Cardiac Irregularity", pct:cardiac, tier:tier(cardiac), desc:"Resting heart rate elevated above typical healthy resting range (60–75 bpm)."});
+
+  return risks.sort((a,b)=>b.pct-a.pct);
+}
+function tier(p){ return p>=55?'high': p>=30?'med':'low'; }
+function clamp(n,lo,hi){ return Math.max(lo,Math.min(hi,n)); }
+function round(n){ return Math.round(n); }
+
+function healthScore(risks, v){
+  const avgRisk = risks.reduce((s,r)=>s+r.pct,0)/risks.length;
+  let score = clamp(round(100 - avgRisk*0.9), 15, 99);
+  return score;
+}
+
+/* ===================== SUGGESTIONS ===================== */
+const dietBank = {
+  "Insomnia":["Herbal tea before bed","Avoid caffeine post-4pm","Magnesium-rich foods (almonds, spinach)"],
+  "Type 2 Diabetes":["Low glycemic-index meals","Fiber-rich foods","Limit refined sugar"],
+  "Hypertension":["Reduce sodium intake","Leafy greens","Potassium-rich fruits (banana, orange)"],
+  "Respiratory Distress":["Warm fluids & steam inhalation foods","Anti-inflammatory foods (turmeric, ginger)"],
+  "Fatigue":["Iron-rich foods (lean protein)","Stay hydrated","Balanced complex carbs"],
+  "Cardiac Irregularity":["Omega-3 rich fish","Reduce saturated fat","Whole grains"]
+};
+const exerciseBank = {
+  "Insomnia":["Evening stretching","Light yoga / breathing exercises"],
+  "Type 2 Diabetes":["Brisk walking 30 min/day","Cycling"],
+  "Hypertension":["Swimming","Low-impact cardio"],
+  "Respiratory Distress":["Breathing exercises (pranayama)","Gentle walking"],
+  "Fatigue":["Short walks + rest breaks","Gradual activity build-up"],
+  "Cardiac Irregularity":["Doctor-supervised cardio","Walking, avoid overexertion"]
+};
+
+/* ===================== RENDER: PATIENT VIEW ===================== */
+function renderPatientView(){
+  const p = patients[currentPatientId];
+  const v = live[currentPatientId];
+  const risks = computeRisks(v);
+  const score = healthScore(risks, v);
+
+  // score ring
+  document.getElementById('scoreVal').textContent = score;
+  document.getElementById('scoreRing').style.setProperty('--pct', score);
+  const ring = document.getElementById('scoreRing');
+  const topRisk = risks[0];
+  if(score>=80){
+    document.getElementById('scoreStatus').textContent = "Health is maintained";
+    document.getElementById('scoreStatus').style.color = "var(--green)";
+    document.getElementById('scoreSub').textContent = "Keep it up — you're doing well.";
+  } else if(score>=55){
+    document.getElementById('scoreStatus').textContent = "Some risk factors detected";
+    document.getElementById('scoreStatus').style.color = "var(--orange)";
+    document.getElementById('scoreSub').textContent = `Watch: ${topRisk.name} (${topRisk.pct}%)`;
+  } else {
+    document.getElementById('scoreStatus').textContent = "Attention needed";
+    document.getElementById('scoreStatus').style.color = "var(--red)";
+    document.getElementById('scoreSub').textContent = `High risk: ${topRisk.name} (${topRisk.pct}%)`;
+  }
+
+  // vitals
+  const vg = document.getElementById('vitalsGrid');
+  vg.innerHTML = `
+    <div class="vital"><div class="k">Steps Today</div><div class="v">${v.steps.toLocaleString()}</div></div>
+    <div class="vital"><div class="k">Calories Burned</div><div class="v">${v.calories}<span class="u">kcal</span></div></div>
+    <div class="vital"><div class="k">Heart Rate</div><div class="v">${v.hr}<span class="u">bpm</span></div></div>
+    <div class="vital"><div class="k">SpO₂</div><div class="v">${v.spo2}<span class="u">%</span></div></div>
+    <div class="vital"><div class="k">Sleep</div><div class="v">${v.sleep.toFixed(1)}<span class="u">hrs</span></div></div>
+    <div class="vital"><div class="k">Blood Pressure</div><div class="v">${v.bpSys}/${v.bpDia}</div></div>
+    <div class="vital"><div class="k">Glucose</div><div class="v">${v.glucose}<span class="u">mg/dL</span></div></div>
+    <div class="vital"><div class="k">Device Status</div><div class="v" style="font-size:15px;color:var(--green);">🟢 Connected</div></div>
+  `;
+
+  // risks
+  const riskList = document.getElementById('riskList');
+  riskList.innerHTML = risks.map(r=>`
+    <div class="risk">
+      <div class="top"><span>${r.name} <span class="pill ${r.tier}">${r.tier.toUpperCase()}</span></span><span>${r.pct}%</span></div>
+      <div class="bar"><div style="width:${r.pct}%;background:${r.tier==='high'?'var(--red)':r.tier==='med'?'var(--orange)':'var(--green)'};"></div></div>
+    </div>
+  `).join('');
+
+  // suggestions from top 2 risks
+  const top2 = risks.slice(0,2).map(r=>r.name);
+  let diets = [], exs = [];
+  top2.forEach(name=>{ diets.push(...(dietBank[name]||[])); exs.push(...(exerciseBank[name]||[])); });
+  diets = [...new Set(diets)].slice(0,5);
+  exs = [...new Set(exs)].slice(0,5);
+  document.getElementById('dietList').innerHTML = diets.map(d=>`<li>🥗 ${d}</li>`).join('');
+  document.getElementById('exerciseList').innerHTML = exs.map(e=>`<li>🏃 ${e}</li>`).join('');
+
+  // chat
+  renderChat();
+}
+
+/* ===================== VITALS SIMULATION LOOP ===================== */
+setInterval(()=>{
+  Object.keys(live).forEach(id=>{
+    const v = live[id];
+    // If this patient has an active un-acknowledged anomaly, jitter around the
+    // critical readings instead of drifting back to baseline.
+    const b = (id === anomalyPatientId)
+      ? {...patients[id].baseline, hr:158, spo2:89, bpSys:172, bpDia:108}
+      : patients[id].baseline;
+    v.steps = Math.max(0, v.steps + round(rand(-20,60)));
+    v.calories = Math.max(0, round(b.calories + rand(-15,15)));
+    v.hr = clamp(round(b.hr + rand(-4,4)), 45, 180);
+    v.spo2 = clamp(round(b.spo2 + rand(-1,1)), 80, 100);
+    v.sleep = clamp(+(b.sleep + rand(-0.3,0.3)).toFixed(1), 2, 9);
+    v.bpSys = clamp(round(b.bpSys + rand(-3,3)), 90, 190);
+    v.bpDia = clamp(round(b.bpDia + rand(-2,2)), 55, 120);
+    v.glucose = clamp(round(b.glucose + rand(-6,6)), 65, 260);
+  });
+  if(document.getElementById('patientView').style.display!=='none'){ renderPatientView(); }
+  if(document.getElementById('doctorView').style.display!=='none'){ renderDoctorView(); }
+}, 3000);
+function rand(a,b){ return a + Math.random()*(b-a); }
+
+/* ===================== ANOMALY SIMULATION ===================== */
+function simulateAnomaly(){
+  const id = currentPatientId;
+  const v = live[id];
+  v.hr = 158; v.spo2 = 89; v.bpSys = 172; v.bpDia = 108;
+  anomalyPatientId = id;
+  showAlert(`🚨 CRITICAL: Abnormal vitals detected for ${patients[id].name} — HR 158 bpm, SpO₂ 89%, BP 172/108. Caregiver &amp; on-call doctor notified.`);
+  renderPatientView();
+  if(document.getElementById('doctorView').style.display!=='none'){ renderDoctorView(); }
+}
+function showAlert(html){
+  document.getElementById('globalAlertText').innerHTML = html;
+  document.getElementById('globalAlert').classList.add('show');
+}
+function dismissAlert(){
+  document.getElementById('globalAlert').classList.remove('show');
+}
+
+/* ===================== REPORT DOWNLOAD ===================== */
+function downloadReport(){
+  const p = patients[currentPatientId];
+  const v = live[currentPatientId];
+  const risks = computeRisks(v);
+  const score = healthScore(risks, v);
+  const lines = [
+    `PRODNOSIS HEALTH REPORT`,
+    `Generated: ${new Date().toLocaleString()}`,
+    ``,
+    `Patient: ${p.name} (${p.sex}, ${p.age}yrs)`,
+    `History: ${p.history.join(', ')}`,
+    ``,
+    `Health Score: ${score}/100`,
+    ``,
+    `Vitals:`,
+    ` - Steps: ${v.steps}`,
+    ` - Calories: ${v.calories} kcal`,
+    ` - Heart Rate: ${v.hr} bpm`,
+    ` - SpO2: ${v.spo2}%`,
+    ` - Sleep: ${v.sleep.toFixed(1)} hrs`,
+    ` - Blood Pressure: ${v.bpSys}/${v.bpDia}`,
+    ` - Glucose: ${v.glucose} mg/dL`,
+    ``,
+    `AI Potential Risks:`,
+    ...risks.map(r=>` - ${r.name}: ${r.pct}% (${r.tier})`),
+  ];
+  const blob = new Blob([lines.join('\n')], {type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${p.name.replace(/\s+/g,'_')}_health_report.txt`;
+  a.click();
+}
+
+/* ===================== CHATBOT ===================== */
+function renderChat(){
+  const log = document.getElementById('chatLog');
+  const hist = chatHistory[currentPatientId];
+  if(hist.length===0){
+    hist.push({role:'bot', text:`Hi ${patients[currentPatientId].name.split(' ')[0]}, I'm your Prodnosis AI assistant. Ask me about your health score, risks, or say "monthly report".`});
+  }
+  log.innerHTML = hist.map(m=>`<div class="msg ${m.role}">${m.text}</div>`).join('');
+  log.scrollTop = log.scrollHeight;
+}
+function sendChat(){
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if(!text) return;
+  const hist = chatHistory[currentPatientId];
+  hist.push({role:'user', text});
+  hist.push({role:'bot', text: botReply(text)});
+  input.value='';
+  renderChat();
+}
+function botReply(q){
+  const p = patients[currentPatientId];
+  const v = live[currentPatientId];
+  const risks = computeRisks(v);
+  const score = healthScore(risks, v);
+  const lower = q.toLowerCase();
+
+  if(lower.includes('monthly report') || lower.includes('report')){
+    const top3 = risks.slice(0,3).map((r,i)=>`${i+1}. ${r.name} (${r.pct}%)`).join('\n');
+    return `Based on your recent smartwatch data there are a few potential risks we found:\n${top3}\n\nYour overall health score is ${score}/100. Tap "Download Report" for the full breakdown.`;
+  }
+  if(lower.includes('score')) return `Your current health score is ${score}/100.`;
+  if(lower.includes('sleep')) return `You slept ${v.sleep.toFixed(1)} hrs recently. 7–9 hrs is recommended for your age group.`;
+  if(lower.includes('heart') || lower.includes('hr')) return `Your resting heart rate is ${v.hr} bpm. A healthy resting range is typically 60–100 bpm.`;
+  if(lower.includes('risk')) return `Your top risk factor right now is ${risks[0].name} at ${risks[0].pct}% — see the "AI Potential Risk Assessment" panel for the full list.`;
+  if(lower.includes('diet') || lower.includes('eat')) return `Based on your top risks, try: ${(dietBank[risks[0].name]||['balanced whole foods']).join(', ')}.`;
+  if(lower.includes('exercise') || lower.includes('workout')) return `Recommended for you: ${(exerciseBank[risks[0].name]||['30 min brisk walking']).join(', ')}.`;
+  return `I can answer questions about your health score, sleep, heart rate, risks, diet, or exercise recommendations. In a production build this would call a trained clinical LLM grounded in your full EHR + wearable history.`;
+}
+
+/* ===================== DOCTOR VIEW ===================== */
+function renderDoctorView(){
+  const list = document.getElementById('doctorPatientList');
+  list.innerHTML = Object.values(patients).map(p=>{
+    const v = live[p.id];
+    const risks = computeRisks(v);
+    const top = risks[0];
+    const isAnomaly = anomalyPatientId === p.id;
+    return `
+      <div class="patient-card ${selectedDoctorPatientId===p.id?'selected':''}" onclick="selectDoctorPatient('${p.id}')">
+        <div class="row">
+          <div><strong>${p.name}</strong> <span class="subtle">(${p.sex}, ${p.age}yrs)</span></div>
+          <span class="pill ${isAnomaly?'high':top.tier}">${isAnomaly?'🚨 CRITICAL':top.tier.toUpperCase()}</span>
+        </div>
+        <div style="margin-top:6px;">
+          ${p.history.map(h=>`<span class="tag">${h}</span>`).join('')}
+        </div>
+        <div class="subtle" style="margin-top:6px;">Top flag: ${top.name} (${top.pct}%)</div>
+      </div>`;
+  }).join('');
+
+  renderDoctorDetail();
+
+  // hospital-wide alerts
+  const highRiskPatients = Object.values(patients).map(p=>{
+    const risks = computeRisks(live[p.id]);
+    return {p, top:risks[0]};
+  }).filter(x=>x.top.tier==='high' || anomalyPatientId===x.p.id);
+
+  const alertsEl = document.getElementById('hospitalAlerts');
+  if(highRiskPatients.length===0){
+    alertsEl.innerHTML = `<span class="subtle">No high-risk flags right now.</span>`;
+  } else {
+    alertsEl.innerHTML = highRiskPatients.map(x=>`
+      <div class="risk">
+        <div class="top"><span>${anomalyPatientId===x.p.id?'🚨 ':''}${x.p.name} — ${x.top.name}</span><span>${x.top.pct}%</span></div>
+        <div class="bar"><div style="width:${x.top.pct}%;background:var(--red);"></div></div>
+      </div>
+    `).join('');
+  }
+}
+function selectDoctorPatient(id){
+  selectedDoctorPatientId = id;
+  renderDoctorView();
+}
+function renderDoctorDetail(){
+  const p = patients[selectedDoctorPatientId];
+  const v = live[p.id];
+  const risks = computeRisks(v);
+  const el = document.getElementById('doctorDetail');
+  el.innerHTML = `
+    <div class="row" style="margin-bottom:10px;">
+      <div>
+        <div style="font-weight:800;font-size:16px;">${p.name}</div>
+        <div class="subtle">${p.sex}, ${p.age}yrs · ${p.weight}kg · ${p.height}</div>
+      </div>
+      ${anomalyPatientId===p.id ? `<button class="btn danger" onclick="acknowledgeAlert('${p.id}')">Acknowledge Alert</button>`:''}
+    </div>
+    <div style="margin-bottom:10px;"><strong style="font-size:13px;">History:</strong> ${p.history.map(h=>`<span class="tag">${h}</span>`).join('')}</div>
+    <div style="margin-bottom:14px;"><strong style="font-size:13px;">Reported Symptoms:</strong> ${p.symptoms.map(h=>`<span class="tag">${h}</span>`).join('')}</div>
+    <div class="grid cols-4" style="margin-bottom:14px;">
+      <div class="vital"><div class="k">HR</div><div class="v" style="font-size:17px;">${v.hr} bpm</div></div>
+      <div class="vital"><div class="k">SpO₂</div><div class="v" style="font-size:17px;">${v.spo2}%</div></div>
+      <div class="vital"><div class="k">BP</div><div class="v" style="font-size:17px;">${v.bpSys}/${v.bpDia}</div></div>
+      <div class="vital"><div class="k">Glucose</div><div class="v" style="font-size:17px;">${v.glucose}</div></div>
+    </div>
+    <strong style="font-size:13px;">AI Risk Flags</strong>
+    <div style="margin-top:8px;">
+      ${risks.map(r=>`
+        <div class="risk">
+          <div class="top"><span>${r.name} <span class="pill ${r.tier}">${r.tier.toUpperCase()}</span></span><span>${r.pct}%</span></div>
+          <div class="bar"><div style="width:${r.pct}%;background:${r.tier==='high'?'var(--red)':r.tier==='med'?'var(--orange)':'var(--green)'};"></div></div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+function acknowledgeAlert(id){
+  anomalyPatientId = null;
+  dismissAlert();
+  renderDoctorView();
+}
+
+/* ===================== INIT ===================== */
+populatePatientSelect();
+renderPatientView();
+</script>
+</body>
+</html>
