@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Prodnosis — AI + IoT Health Monitoring (Prototype)</title>
+<title>Prodnosis — AI + IoT Health Monitoring</title>
 <style>
   :root{
     --navy:#0a1440; --navy2:#0f1d5c; --blue:#2f5bff; --blue-light:#6f8dff;
@@ -12,13 +12,15 @@
   }
   *{box-sizing:border-box;}
   body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:linear-gradient(180deg,#070c24,#0b1330 40%);color:var(--text);}
-  header{display:flex;align-items:center;justify-content:space-between;padding:16px 28px;background:var(--navy);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:50;}
+  header{display:flex;align-items:center;justify-content:space-between;padding:16px 28px;background:var(--navy);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:50;flex-wrap:wrap;gap:10px;}
   .brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.5px;font-size:20px;}
   .brand .mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--blue),var(--blue-light));display:flex;align-items:center;justify-content:center;font-size:16px;}
   nav.tabs{display:flex;gap:6px;background:var(--panel);padding:4px;border-radius:12px;border:1px solid var(--line);}
   nav.tabs button{background:transparent;border:none;color:var(--sub);padding:9px 18px;border-radius:9px;cursor:pointer;font-weight:600;font-size:14px;}
   nav.tabs button.active{background:var(--blue);color:#fff;}
-  .disclaimer{font-size:11px;color:var(--sub);max-width:220px;text-align:right;line-height:1.4;}
+  .backend-pill{font-size:12px;font-weight:700;padding:6px 12px;border-radius:999px;border:1px solid var(--line);}
+  .backend-pill.online{color:var(--green);border-color:var(--green);}
+  .backend-pill.offline{color:var(--yellow);border-color:var(--yellow);}
   main{max-width:1300px;margin:0 auto;padding:24px 20px 80px;}
   .grid{display:grid;gap:18px;}
   .cols-3{grid-template-columns:repeat(3,1fr);}
@@ -67,7 +69,6 @@
   .suggest-list li{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:13px;display:flex;gap:8px;align-items:center;}
   footer.note{max-width:1300px;margin:0 auto;padding:0 20px 40px;color:var(--sub);font-size:12px;text-align:center;}
   .flex-gap{display:flex;gap:10px;flex-wrap:wrap;}
-  h2.section{font-size:18px;margin:26px 0 14px;color:var(--text);}
 </style>
 </head>
 <body>
@@ -78,7 +79,7 @@
     <button id="tabPatientBtn" class="active" onclick="switchTab('patient')">Patient Dashboard</button>
     <button id="tabDoctorBtn" onclick="switchTab('doctor')">Doctor Portal</button>
   </nav>
-  <div class="disclaimer">Working prototype with simulated wearable data &amp; rule-based risk scoring — not a medical device.</div>
+  <div id="backendPill" class="backend-pill offline">⏳ Checking backend…</div>
 </header>
 
 <main>
@@ -118,7 +119,7 @@
     </div>
 
     <div class="card" style="grid-column:span 2;">
-      <h3>Live Vitals <span class="subtle" style="text-transform:none;font-weight:400;">(simulated IoT feed, updates every 3s)</span></h3>
+      <h3>Live Vitals <span class="subtle" id="vitalsSourceNote" style="text-transform:none;font-weight:400;">(wearable feed)</span></h3>
       <div class="grid cols-4" id="vitalsGrid"></div>
     </div>
   </div>
@@ -127,7 +128,7 @@
     <div class="card">
       <h3>🧠 AI Potential Risk Assessment</h3>
       <div id="riskList"></div>
-      <div class="subtle" style="margin-top:8px;">Rule-based scoring engine demonstrating how live vitals + history would feed a trained ML model in production.</div>
+      <div class="subtle" id="riskSourceNote" style="margin-top:8px;"></div>
     </div>
 
     <div class="card">
@@ -173,9 +174,56 @@
 
 </main>
 
-<footer class="note">Prodnosis prototype · demonstrates the RPM + AI risk-prediction concept from the Technex'25 pitch deck. All patient data below is fictional demo data.</footer>
+<footer class="note">Prodnosis · Team Invense · Not a certified medical device — demo data only.</footer>
 
 <script>
+/* ===================== BACKEND CONNECTION =====================
+   When the FastAPI server (backend/main.py) is running on this
+   computer, the dashboard saves every reading to the database and
+   asks the server for the AI risk assessment.
+   When it isn't (e.g. the public Netlify/GitHub Pages links),
+   everything falls back to in-browser demo mode automatically.   */
+const API = "http://localhost:8000";
+let backendOnline = false;
+let backendCache = {};   // per-patient: {risks, score, ts} straight from the API
+
+async function checkBackend(){
+  try{
+    const ctrl = new AbortController();
+    setTimeout(()=>ctrl.abort(), 1500);
+    const r = await fetch(API + "/patients", {signal:ctrl.signal});
+    backendOnline = r.ok;
+  }catch(e){ backendOnline = false; }
+  const pill = document.getElementById('backendPill');
+  if(backendOnline){
+    pill.className = "backend-pill online";
+    pill.textContent = "🟢 Backend connected — saving to database";
+  }else{
+    pill.className = "backend-pill offline";
+    pill.textContent = "🟡 Demo mode — simulated data (backend offline)";
+  }
+}
+
+async function syncPatientToBackend(id){
+  // 1) push the current reading, 2) get the server's AI assessment back
+  const v = live[id];
+  try{
+    await fetch(API + "/vitals", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        patient_id:id, steps:v.steps, hr:v.hr, spo2:v.spo2,
+        sleep_hrs:v.sleep, bp_sys:v.bpSys, bp_dia:v.bpDia, glucose:v.glucose
+      })
+    });
+    const r = await fetch(`${API}/patients/${id}/risks`);
+    if(r.ok){
+      const data = await r.json();
+      backendCache[id] = {risks:data.risks, score:data.health_score, ts:data.measured_at};
+    }
+  }catch(e){ backendOnline = false; checkBackend(); }
+}
+
 /* ===================== DATA MODEL ===================== */
 const patients = {
   manya: {
@@ -198,7 +246,7 @@ const patients = {
   }
 };
 
-let live = {}; // per-patient current vitals
+let live = {};
 Object.keys(patients).forEach(id=>{ live[id] = {...patients[id].baseline}; });
 
 let currentPatientId = "manya";
@@ -227,45 +275,38 @@ function onPatientChange(){
   renderPatientView();
 }
 
-/* ===================== RISK ENGINE ===================== */
-// Simple, transparent rule-based scoring standing in for a trained ML model.
-function computeRisks(v){
-  const risks = [];
-
-  // Insomnia — low sleep hours
-  let insomnia = clamp(round((7 - v.sleep) * 14), 3, 96);
-  risks.push({name:"Insomnia", pct:insomnia, tier:tier(insomnia), desc:"Insufficient / irregular sleep duration detected from wearable sleep tracking."});
-
-  // Type 2 Diabetes — glucose trend
-  let diabetes = clamp(round((v.glucose - 90) * 0.55), 3, 96);
-  risks.push({name:"Type 2 Diabetes", pct:diabetes, tier:tier(diabetes), desc:"Elevated glucose readings relative to healthy fasting range (70–99 mg/dL)."});
-
-  // Hypertension — blood pressure
-  let hyper = clamp(round(((v.bpSys - 110) + (v.bpDia - 70)) * 0.9), 2, 96);
-  risks.push({name:"Hypertension", pct:hyper, tier:tier(hyper), desc:"Systolic/diastolic BP trending above normal (120/80 mmHg) threshold."});
-
-  // Respiratory distress — SpO2
-  let resp = clamp(round((97 - v.spo2) * 12), 2, 95);
-  risks.push({name:"Respiratory Distress", pct:resp, tier:tier(resp), desc:"Blood oxygen saturation below the healthy 97%+ baseline."});
-
-  // Fatigue — low steps + low sleep
-  let fatigue = clamp(round((8000 - v.steps)/120 + (7-v.sleep)*4), 2, 92);
-  risks.push({name:"Fatigue", pct:fatigue, tier:tier(fatigue), desc:"Low activity combined with reduced sleep duration."});
-
-  // Cardiac irregularity — resting HR
-  let cardiac = clamp(round((v.hr - 68) * 2.2), 2, 95);
-  risks.push({name:"Cardiac Irregularity", pct:cardiac, tier:tier(cardiac), desc:"Resting heart rate elevated above typical healthy resting range (60–75 bpm)."});
-
+/* ===================== LOCAL RISK ENGINE (demo-mode fallback) ===================== */
+function computeRisksLocal(v){
+  const raw = {
+    "Insomnia": (7 - v.sleep) * 14,
+    "Type 2 Diabetes": (v.glucose - 90) * 0.55,
+    "Hypertension": ((v.bpSys - 110) + (v.bpDia - 70)) * 0.9,
+    "Respiratory Distress": (97 - v.spo2) * 12,
+    "Fatigue": (8000 - v.steps)/120 + (7 - v.sleep)*4,
+    "Cardiac Irregularity": (v.hr - 68) * 2.2
+  };
+  const risks = Object.entries(raw).map(([name,x])=>{
+    const pct = clamp(round(x), 2, 96);
+    return {name, pct, tier:tier(pct)};
+  });
   return risks.sort((a,b)=>b.pct-a.pct);
 }
 function tier(p){ return p>=55?'high': p>=30?'med':'low'; }
 function clamp(n,lo,hi){ return Math.max(lo,Math.min(hi,n)); }
 function round(n){ return Math.round(n); }
+function healthScoreLocal(risks){
+  const avg = risks.reduce((s,r)=>s+r.pct,0)/risks.length;
+  return clamp(round(100 - avg*0.9), 15, 99);
+}
 
-function healthScore(risks, v){
-  const avgRisk = risks.reduce((s,r)=>s+r.pct,0)/risks.length;
-  let score = clamp(round(100 - avgRisk*0.9), 15, 99);
-  return score;
+/* One source of truth: backend answer when online, local math otherwise */
+function getRisks(id){
+  if(backendOnline && backendCache[id]) return backendCache[id].risks;
+  return computeRisksLocal(live[id]);
+}
+function getScore(id){
+  if(backendOnline && backendCache[id]) return backendCache[id].score;
+  return healthScoreLocal(computeRisksLocal(live[id]));
 }
 
 /* ===================== SUGGESTIONS ===================== */
@@ -290,29 +331,20 @@ const exerciseBank = {
 function renderPatientView(){
   const p = patients[currentPatientId];
   const v = live[currentPatientId];
-  const risks = computeRisks(v);
-  const score = healthScore(risks, v);
+  const risks = getRisks(currentPatientId);
+  const score = getScore(currentPatientId);
 
-  // score ring
   document.getElementById('scoreVal').textContent = score;
   document.getElementById('scoreRing').style.setProperty('--pct', score);
-  const ring = document.getElementById('scoreRing');
   const topRisk = risks[0];
   if(score>=80){
-    document.getElementById('scoreStatus').textContent = "Health is maintained";
-    document.getElementById('scoreStatus').style.color = "var(--green)";
-    document.getElementById('scoreSub').textContent = "Keep it up — you're doing well.";
+    setScoreStatus("Health is maintained","var(--green)","Keep it up — you're doing well.");
   } else if(score>=55){
-    document.getElementById('scoreStatus').textContent = "Some risk factors detected";
-    document.getElementById('scoreStatus').style.color = "var(--orange)";
-    document.getElementById('scoreSub').textContent = `Watch: ${topRisk.name} (${topRisk.pct}%)`;
+    setScoreStatus("Some risk factors detected","var(--orange)",`Watch: ${topRisk.name} (${topRisk.pct}%)`);
   } else {
-    document.getElementById('scoreStatus').textContent = "Attention needed";
-    document.getElementById('scoreStatus').style.color = "var(--red)";
-    document.getElementById('scoreSub').textContent = `High risk: ${topRisk.name} (${topRisk.pct}%)`;
+    setScoreStatus("Attention needed","var(--red)",`High risk: ${topRisk.name} (${topRisk.pct}%)`);
   }
 
-  // vitals
   const vg = document.getElementById('vitalsGrid');
   vg.innerHTML = `
     <div class="vital"><div class="k">Steps Today</div><div class="v">${v.steps.toLocaleString()}</div></div>
@@ -324,17 +356,14 @@ function renderPatientView(){
     <div class="vital"><div class="k">Glucose</div><div class="v">${v.glucose}<span class="u">mg/dL</span></div></div>
     <div class="vital"><div class="k">Device Status</div><div class="v" style="font-size:15px;color:var(--green);">🟢 Connected</div></div>
   `;
+  document.getElementById('vitalsSourceNote').textContent =
+    backendOnline ? "(saved to database via API)" : "(simulated wearable feed)";
 
-  // risks
-  const riskList = document.getElementById('riskList');
-  riskList.innerHTML = risks.map(r=>`
-    <div class="risk">
-      <div class="top"><span>${r.name} <span class="pill ${r.tier}">${r.tier.toUpperCase()}</span></span><span>${r.pct}%</span></div>
-      <div class="bar"><div style="width:${r.pct}%;background:${r.tier==='high'?'var(--red)':r.tier==='med'?'var(--orange)':'var(--green)'};"></div></div>
-    </div>
-  `).join('');
+  document.getElementById('riskList').innerHTML = risks.map(r=>riskBarHTML(r)).join('');
+  document.getElementById('riskSourceNote').textContent = backendOnline
+    ? "Assessment computed server-side by the Prodnosis API from your stored readings."
+    : "Demo-mode assessment computed in-browser. Run the backend for database-backed scoring.";
 
-  // suggestions from top 2 risks
   const top2 = risks.slice(0,2).map(r=>r.name);
   let diets = [], exs = [];
   top2.forEach(name=>{ diets.push(...(dietBank[name]||[])); exs.push(...(exerciseBank[name]||[])); });
@@ -343,16 +372,26 @@ function renderPatientView(){
   document.getElementById('dietList').innerHTML = diets.map(d=>`<li>🥗 ${d}</li>`).join('');
   document.getElementById('exerciseList').innerHTML = exs.map(e=>`<li>🏃 ${e}</li>`).join('');
 
-  // chat
   renderChat();
 }
+function setScoreStatus(msg,color,sub){
+  const el = document.getElementById('scoreStatus');
+  el.textContent = msg; el.style.color = color;
+  document.getElementById('scoreSub').textContent = sub;
+}
+function riskBarHTML(r){
+  const color = r.tier==='high'?'var(--red)':r.tier==='med'?'var(--orange)':'var(--green)';
+  return `
+    <div class="risk">
+      <div class="top"><span>${r.name} <span class="pill ${r.tier}">${r.tier.toUpperCase()}</span></span><span>${r.pct}%</span></div>
+      <div class="bar"><div style="width:${r.pct}%;background:${color};"></div></div>
+    </div>`;
+}
 
-/* ===================== VITALS SIMULATION LOOP ===================== */
-setInterval(()=>{
+/* ===================== VITALS LOOP ===================== */
+setInterval(async ()=>{
   Object.keys(live).forEach(id=>{
     const v = live[id];
-    // If this patient has an active un-acknowledged anomaly, jitter around the
-    // critical readings instead of drifting back to baseline.
     const b = (id === anomalyPatientId)
       ? {...patients[id].baseline, hr:158, spo2:89, bpSys:172, bpDia:108}
       : patients[id].baseline;
@@ -365,10 +404,19 @@ setInterval(()=>{
     v.bpDia = clamp(round(b.bpDia + rand(-2,2)), 55, 120);
     v.glucose = clamp(round(b.glucose + rand(-6,6)), 65, 260);
   });
+
+  if(backendOnline){
+    // send all three patients' readings to the database, get AI scores back
+    await Promise.all(Object.keys(patients).map(id=>syncPatientToBackend(id)));
+  }
+
   if(document.getElementById('patientView').style.display!=='none'){ renderPatientView(); }
   if(document.getElementById('doctorView').style.display!=='none'){ renderDoctorView(); }
-}, 3000);
+}, 4000);
 function rand(a,b){ return a + Math.random()*(b-a); }
+
+// re-check the backend every 15s (so starting the server later "just works")
+setInterval(checkBackend, 15000);
 
 /* ===================== ANOMALY SIMULATION ===================== */
 function simulateAnomaly(){
@@ -377,6 +425,7 @@ function simulateAnomaly(){
   v.hr = 158; v.spo2 = 89; v.bpSys = 172; v.bpDia = 108;
   anomalyPatientId = id;
   showAlert(`🚨 CRITICAL: Abnormal vitals detected for ${patients[id].name} — HR 158 bpm, SpO₂ 89%, BP 172/108. Caregiver &amp; on-call doctor notified.`);
+  if(backendOnline){ syncPatientToBackend(id).then(()=>renderPatientView()); }
   renderPatientView();
   if(document.getElementById('doctorView').style.display!=='none'){ renderDoctorView(); }
 }
@@ -392,11 +441,12 @@ function dismissAlert(){
 function downloadReport(){
   const p = patients[currentPatientId];
   const v = live[currentPatientId];
-  const risks = computeRisks(v);
-  const score = healthScore(risks, v);
+  const risks = getRisks(currentPatientId);
+  const score = getScore(currentPatientId);
   const lines = [
     `PRODNOSIS HEALTH REPORT`,
     `Generated: ${new Date().toLocaleString()}`,
+    `Source: ${backendOnline ? "Prodnosis API (database-backed)" : "Demo mode (simulated)"}`,
     ``,
     `Patient: ${p.name} (${p.sex}, ${p.age}yrs)`,
     `History: ${p.history.join(', ')}`,
@@ -443,10 +493,9 @@ function sendChat(){
   renderChat();
 }
 function botReply(q){
-  const p = patients[currentPatientId];
   const v = live[currentPatientId];
-  const risks = computeRisks(v);
-  const score = healthScore(risks, v);
+  const risks = getRisks(currentPatientId);
+  const score = getScore(currentPatientId);
   const lower = q.toLowerCase();
 
   if(lower.includes('monthly report') || lower.includes('report')){
@@ -459,15 +508,14 @@ function botReply(q){
   if(lower.includes('risk')) return `Your top risk factor right now is ${risks[0].name} at ${risks[0].pct}% — see the "AI Potential Risk Assessment" panel for the full list.`;
   if(lower.includes('diet') || lower.includes('eat')) return `Based on your top risks, try: ${(dietBank[risks[0].name]||['balanced whole foods']).join(', ')}.`;
   if(lower.includes('exercise') || lower.includes('workout')) return `Recommended for you: ${(exerciseBank[risks[0].name]||['30 min brisk walking']).join(', ')}.`;
-  return `I can answer questions about your health score, sleep, heart rate, risks, diet, or exercise recommendations. In a production build this would call a trained clinical LLM grounded in your full EHR + wearable history.`;
+  return `I can answer questions about your health score, sleep, heart rate, risks, diet, or exercise recommendations.`;
 }
 
 /* ===================== DOCTOR VIEW ===================== */
 function renderDoctorView(){
   const list = document.getElementById('doctorPatientList');
   list.innerHTML = Object.values(patients).map(p=>{
-    const v = live[p.id];
-    const risks = computeRisks(v);
+    const risks = getRisks(p.id);
     const top = risks[0];
     const isAnomaly = anomalyPatientId === p.id;
     return `
@@ -485,9 +533,8 @@ function renderDoctorView(){
 
   renderDoctorDetail();
 
-  // hospital-wide alerts
   const highRiskPatients = Object.values(patients).map(p=>{
-    const risks = computeRisks(live[p.id]);
+    const risks = getRisks(p.id);
     return {p, top:risks[0]};
   }).filter(x=>x.top.tier==='high' || anomalyPatientId===x.p.id);
 
@@ -510,7 +557,7 @@ function selectDoctorPatient(id){
 function renderDoctorDetail(){
   const p = patients[selectedDoctorPatientId];
   const v = live[p.id];
-  const risks = computeRisks(v);
+  const risks = getRisks(p.id);
   const el = document.getElementById('doctorDetail');
   el.innerHTML = `
     <div class="row" style="margin-bottom:10px;">
@@ -530,12 +577,7 @@ function renderDoctorDetail(){
     </div>
     <strong style="font-size:13px;">AI Risk Flags</strong>
     <div style="margin-top:8px;">
-      ${risks.map(r=>`
-        <div class="risk">
-          <div class="top"><span>${r.name} <span class="pill ${r.tier}">${r.tier.toUpperCase()}</span></span><span>${r.pct}%</span></div>
-          <div class="bar"><div style="width:${r.pct}%;background:${r.tier==='high'?'var(--red)':r.tier==='med'?'var(--orange)':'var(--green)'};"></div></div>
-        </div>
-      `).join('')}
+      ${risks.map(r=>riskBarHTML(r)).join('')}
     </div>
   `;
 }
@@ -548,6 +590,7 @@ function acknowledgeAlert(id){
 /* ===================== INIT ===================== */
 populatePatientSelect();
 renderPatientView();
+checkBackend().then(()=>renderPatientView());
 </script>
 </body>
 </html>
